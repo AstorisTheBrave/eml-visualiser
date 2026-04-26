@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0f1117"/>
+  <rect x="40" y="40" width="1120" height="550" rx="16" fill="#1a1d27"/>
+  <text x="600" y="200" text-anchor="middle" font-family="monospace" font-size="72"
+        font-weight="bold" fill="#f8fafc">EML Visualiser</text>
+  <text x="600" y="300" text-anchor="middle" font-family="monospace" font-size="40"
+        fill="#94a3b8">eml(x, y) = exp(x) &#8722; ln(y)</text>
+  <text x="600" y="390" text-anchor="middle" font-family="monospace" font-size="30"
+        fill="#6366f1">Every elementary function from a single operator</text>
+  <text x="600" y="530" text-anchor="middle" font-family="monospace" font-size="22"
+        fill="#94a3b8">Based on arXiv:2603.21852 &#183; Odrzywolek (2026)</text>
+</svg>
