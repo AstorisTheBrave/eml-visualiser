@@ -1,0 +1,8 @@
+# Runtime dependencies for the Vercel Python serverless function (api/index.py).
+# Vercel installs these for the backend FastAPI app. Test/dev-only tools
+# (pytest, uvicorn, httpx) live in backend/requirements.txt and are not needed
+# on Vercel, which provides the ASGI server itself.
+fastapi>=0.110.0
+sympy>=1.12
+slowapi>=0.1.9
+pydantic>=2.0

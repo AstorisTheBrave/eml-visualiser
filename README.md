@@ -91,19 +91,45 @@ npm test
 
 ## Deployment
 
-### Backend — Render
+The whole app — frontend **and** backend — runs on a single Vercel project.
+The React frontend is served as static files and the FastAPI backend runs as a
+Python serverless function, so there is no separate backend host and no CORS to
+configure (the frontend calls the API same-origin under `/api`).
 
-- **Build command:** `pip install -r requirements.txt`
-- **Start command:** `uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --loop asyncio`
-- **Environment variable:** `ALLOWED_ORIGINS=https://your-app.vercel.app`
+### Vercel (frontend + backend)
 
-### Frontend — Vercel
+The repo root already contains everything Vercel needs:
 
-- **Root directory:** `frontend`
-- **Build command:** `npm run build`
-- **Output directory:** `dist`
+- `vercel.json` — builds the frontend (`frontend/dist`) and routes
+  `/api/(.*)` to the Python function.
+- `api/index.py` — Vercel entrypoint that imports the FastAPI app from
+  `backend/`.
+- `requirements.txt` (root) — runtime Python deps for the function.
 
-After deploying the backend, update `frontend/.env.production` with your Render URL, then deploy the frontend.
+To deploy, import the repository into Vercel and deploy. No special settings are
+required — `vercel.json` configures the build command, output directory, and the
+serverless function. There is no `ALLOWED_ORIGINS` to set because the frontend
+and API share one origin.
+
+`frontend/.env.production` sets `VITE_API_URL=/api`, so the production frontend
+calls `/api/compute` on the same domain. Local development keeps using
+`http://localhost:8000` via `frontend/.env.development`.
+
+#### Serverless notes
+
+- Rate limiting (`slowapi`) and the in-memory response cache are per-instance.
+  On serverless they are best-effort and do not share state across instances —
+  fine for correctness, but for strict global limits/cache use a shared store
+  (e.g. Vercel KV / Upstash Redis).
+- Keep the function `maxDuration` above `COMPUTE_TIMEOUT_SECONDS` (set to 15s in
+  `vercel.json`; the compute timeout is 2s).
+
+### Alternative: separate backend host
+
+If you prefer to run the backend elsewhere (e.g. Render with
+`uvicorn main:app --host 0.0.0.0 --port 8000`), set `ALLOWED_ORIGINS` on the
+backend to your frontend origin and point `frontend/.env.production`'s
+`VITE_API_URL` at the backend URL instead of `/api`.
 
 ---
 

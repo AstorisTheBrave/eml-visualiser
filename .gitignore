@@ -35,6 +35,12 @@ Thumbs.db
 *.swp
 *.swo
 
+# Local agent notes (not for the repo)
+CLAUDE.md
+
+# Vercel
+.vercel/
+
 # Test output
 coverage/
 .coverage

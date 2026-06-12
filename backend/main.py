@@ -52,4 +52,8 @@ async def rate_limit_handler(request, exc):
     )
 
 
+# Mounted at the root for local development (frontend calls /compute) and
+# under /api for same-origin Vercel deploys, where vercel.json rewrites
+# /api/(.*) to this function and the ASGI path keeps the /api prefix.
 app.include_router(router)
+app.include_router(router, prefix="/api")
