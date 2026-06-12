@@ -91,38 +91,48 @@ npm test
 
 ## Deployment
 
-The whole app — frontend **and** backend — runs on a single Vercel project.
-The React frontend is served as static files and the FastAPI backend runs as a
-Python serverless function, so there is no separate backend host and no CORS to
-configure (the frontend calls the API same-origin under `/api`).
+The whole app — frontend **and** backend — runs on a single Vercel project
+using Vercel **Services** (`experimentalServices`). The Vite frontend and the
+FastAPI backend are built as two services that share one domain, so there is no
+separate backend host and no CORS to configure (the frontend calls the API
+same-origin under `/api`).
 
-### Vercel (frontend + backend)
+### Vercel (Services)
 
-The repo root already contains everything Vercel needs:
+`vercel.json` declares both services:
 
-- `vercel.json` — builds the frontend (`frontend/dist`) and routes
-  `/api/(.*)` to the Python function.
-- `api/index.py` — Vercel entrypoint that imports the FastAPI app from
-  `backend/`.
-- `requirements.txt` (root) — runtime Python deps for the function.
+```json
+{
+  "experimentalServices": {
+    "frontend": { "root": "frontend", "routePrefix": "/" },
+    "backend":  { "root": "backend",  "routePrefix": "/api" }
+  }
+}
+```
 
-To deploy, import the repository into Vercel and deploy. No special settings are
-required — `vercel.json` configures the build command, output directory, and the
-serverless function. There is no `ALLOWED_ORIGINS` to set because the frontend
-and API share one origin.
+- **frontend** (`root: frontend`, `/`) — Vercel detects Vite and serves the
+  static build as the catch-all.
+- **backend** (`root: backend`, `/api`) — Vercel detects FastAPI and runs
+  `backend/main.py` (the `app` instance). Requests to `/api/*` are routed here.
+
+To deploy, import the repository, set the project **Framework Preset** to
+**Services**, and deploy. No `ALLOWED_ORIGINS` is needed because both services
+share one origin.
 
 `frontend/.env.production` sets `VITE_API_URL=/api`, so the production frontend
-calls `/api/compute` on the same domain. Local development keeps using
-`http://localhost:8000` via `frontend/.env.development`.
+calls `/api/compute` on the same domain. `backend/main.py` mounts the compute
+router at both `/compute` (local dev) and `/api/compute` (Vercel), so it works
+whether or not Vercel strips the `/api` route prefix. Local development keeps
+using `http://localhost:8000` via `frontend/.env.development`.
 
-#### Serverless notes
+#### Notes
 
-- Rate limiting (`slowapi`) and the in-memory response cache are per-instance.
-  On serverless they are best-effort and do not share state across instances —
+- Rate limiting (`slowapi`) and the in-memory response cache live in the backend
+  service's memory. With Fluid compute they are best-effort across instances —
   fine for correctness, but for strict global limits/cache use a shared store
   (e.g. Vercel KV / Upstash Redis).
-- Keep the function `maxDuration` above `COMPUTE_TIMEOUT_SECONDS` (set to 15s in
-  `vercel.json`; the compute timeout is 2s).
+- The FastAPI service is one bundle and must fit Vercel's 500 MB function limit.
+  SymPy is the heavy dependency but fits comfortably.
 
 ### Alternative: separate backend host
 
