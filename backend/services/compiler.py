@@ -1,3 +1,4 @@
+import re
 import sympy as sp
 from sympy.parsing.sympy_parser import (
     parse_expr,
@@ -65,6 +66,49 @@ ALLOWED: dict = {
 # Frontend mirrors this set for warning display.
 RESERVED_SYMBOLS = frozenset(["e", "pi", "Pi"])
 
+# Constants are case-sensitive on purpose (see note above re: E / I / i).
+# Every other ALLOWED entry is a named function we accept in any casing,
+# so users can write sqrt(64), Sqrt(64) or SQRT(64) interchangeably.
+_CONSTANT_NAMES = frozenset(["e", "pi", "Pi"])
+_FUNCTION_NAMES = frozenset(
+    name.lower() for name in ALLOWED if name not in _CONSTANT_NAMES
+)
+
+# Matches an identifier used as a function call: `name(`.
+_FUNC_CALL_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(\s*\()")
+
+
+def normalize_input(user_input: str) -> str:
+    """
+    Light, lossless cleanup applied before SymPy parsing. Keeps the vendored
+    eml_compiler_v4 untouched while making the front door more forgiving:
+
+    - Equations: a single ``=`` (e.g. ``y = x^2``) is rewritten to root form
+      ``(y)-(x^2)`` so relations can be visualised as one expression.
+    - Case-insensitive functions: any known function name is folded to its
+      canonical lowercase (``Sqrt`` -> ``sqrt``). Variables and the reserved
+      constants (e, pi) are left exactly as written.
+    """
+    text = user_input.strip()
+
+    # Treat "a = b" as "a - (b)". Skip comparison operators (==, <=, >=, !=).
+    if (
+        text.count("=") == 1
+        and not any(op in text for op in ("==", "<=", ">=", "!="))
+    ):
+        lhs, rhs = text.split("=")
+        if lhs.strip() and rhs.strip():
+            text = f"({lhs.strip()})-({rhs.strip()})"
+
+    def _fold(match: "re.Match") -> str:
+        name, paren = match.group(1), match.group(2)
+        canonical = name.lower()
+        if canonical in _FUNCTION_NAMES:
+            return canonical + paren
+        return match.group(0)
+
+    return _FUNC_CALL_RE.sub(_fold, text)
+
 
 class InvalidExpressionError(Exception):
     pass
@@ -90,9 +134,13 @@ def compile_expression(user_input: str) -> dict:
         InvalidExpressionError
         UnsupportedOperationError
     """
+    normalized_input = normalize_input(user_input)
+    if not normalized_input:
+        raise InvalidExpressionError("Expression is empty")
+
     try:
         sympy_expr = parse_expr(
-            user_input,
+            normalized_input,
             local_dict=ALLOWED,
             transformations=TRANSFORMATIONS,
         )
