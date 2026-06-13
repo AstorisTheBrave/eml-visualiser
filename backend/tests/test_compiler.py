@@ -90,6 +90,13 @@ def test_reciprocal_functions_case_insensitive():
         assert "x" in compile_expression(expr)["variables_detected"]
 
 
+def test_inverse_reciprocal_hyperbolic_aliases():
+    # arcsch/arsech/arcoth spellings alias SymPy's acsch/asech/acoth.
+    assert compile_expression("arcsch(x)")["eml_string"] == \
+        compile_expression("acsch(x)")["eml_string"]
+    assert "x" in compile_expression("arsech(x + 2)")["variables_detected"]
+
+
 def test_unknown_function_gives_clear_error():
     # An unrecognised name must not surface as "too many variables".
     with pytest.raises(UnsupportedOperationError) as exc:

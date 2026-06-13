@@ -64,10 +64,17 @@ ALLOWED: dict = {
     "sech":    sp.sech,
     "csch":    sp.csch,
     "coth":    sp.coth,
+    # Inverse reciprocal hyperbolic
+    "acsch":   sp.acsch,
+    "asech":   sp.asech,
+    "acoth":   sp.acoth,
     # Area-hyperbolic spelling (ar… ) — aliases of the inverse hyperbolics
     "arsinh":  EML_LOCALS["ArcSinh"],
     "arcosh":  EML_LOCALS["ArcCosh"],
     "artanh":  EML_LOCALS["ArcTanh"],
+    "arcsch":  sp.acsch,
+    "arsech":  sp.asech,
+    "arcoth":  sp.acoth,
     # Custom from paper
     "half":    EML_LOCALS["Half"],
     "inv":     EML_LOCALS["Inv"],
