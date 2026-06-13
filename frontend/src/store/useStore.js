@@ -52,11 +52,19 @@ const useStore = create((set) => ({
       request: { status: "error", lastUpdated: Date.now() },
     }),
 
-  updateVariablesForNewExpression: (detected) =>
+  updateVariablesForNewExpression: (detected, meta = {}) =>
     set((state) => {
       const next = {}
       for (const v of detected) {
-        next[v] = v in state.variables ? state.variables[v] : 0
+        let value = v in state.variables ? state.variables[v] : 0
+        // Clamp carried-over (or default) values into the new
+        // expression's domain so the slider value can't sit outside
+        // its min/max after switching expressions.
+        const domain = meta[v]
+        if (domain) {
+          value = Math.min(Math.max(value, domain.min), domain.max)
+        }
+        next[v] = value
       }
       return { variables: next }
     }),

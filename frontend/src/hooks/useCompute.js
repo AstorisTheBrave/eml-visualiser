@@ -45,12 +45,18 @@ export function useCompute() {
       }
 
       const data = body.data
+      const detected = data.variables_detected ?? []
+      const meta     = data.variable_meta ?? {}
 
       if (data.variable_meta) {
-        setVariableMeta(data.variable_meta)
+        setVariableMeta(meta)
       }
 
-      updateVariablesForNewExpression(data.variables_detected ?? [])
+      // Clamp carried-over variable values into the new domain. Snapshot
+      // before/after so we know whether an existing value had to move.
+      const before = useStore.getState().variables
+      updateVariablesForNewExpression(detected, meta)
+      const after = useStore.getState().variables
 
       setResponse({
         result:             data.result,
@@ -61,6 +67,15 @@ export function useCompute() {
       })
 
       addToHistory(expression)
+
+      // If switching expressions clamped an existing value, the result we
+      // just rendered was computed with the old (out-of-domain) value.
+      // Recompute once with the clamped value — only in evaluate mode, and
+      // only for values that actually changed (so this can't loop).
+      const clamped = detected.some((v) => v in before && before[v] !== after[v])
+      if (clamped && useStore.getState().computeMode === "evaluate") {
+        compute()
+      }
     } catch (err) {
       clearTimeout(timeoutId)
       if (err.name === "AbortError") {
