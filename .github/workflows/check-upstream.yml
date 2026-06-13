@@ -28,14 +28,12 @@ jobs:
           script: |
             const fs = require('fs');
 
-            // Upstream source of backend/eml_compiler_v4.py.
+            // Upstream source of backend/eml_compiler_v4.py (verified path).
             // If the upstream repo layout changes, update these candidates.
             const repo = 'VA00/SymbolicRegressionPackage';
-            const branches = ['main', 'master'];
+            const branches = ['master', 'main'];
             const paths = [
-              'eml_compiler_v4.py',
-              'src/eml_compiler_v4.py',
-              'python/eml_compiler_v4.py',
+              'EML_toolkit/EmL_compiler/eml_compiler_v4.py',
             ];
 
             const local = fs.readFileSync('backend/eml_compiler_v4.py', 'utf8');
