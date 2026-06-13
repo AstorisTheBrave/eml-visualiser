@@ -1,9 +1,5 @@
 # eml_compiler_v4.py
 # Standalone EML compiler CLI (default mode: compile a Wolfram-style expression)
-# Source: https://github.com/VA00/SymbolicRegressionPackage
-# Based on: "All elementary functions from a single operator"
-# by Andrzej Odrzywolek, Jagiellonian University (2026)
-# arXiv:2603.21852
 import os, argparse, re, sys
 from sympy import (
     sympify, Symbol, Integer, Rational, Float, E, I, pi,
@@ -16,19 +12,20 @@ from sympy import (
 # EML string emit primitives
 # =========================
 def EML(a, b):        return f"EML[{a},{b}]"
-def eml_exp(z):       return EML(z, "1")
-def eml_log(z):       return EML("1", eml_exp(EML("1", z)))
-def eml_zero():       return eml_log("1")
-def eml_sub(a, b):    return EML(eml_log(a), eml_exp(b))
-def eml_neg(z):       return eml_sub(eml_zero(), z)
-def eml_add(a, b):    return eml_sub(a, eml_neg(b))
-def eml_inv(z):       return eml_exp(eml_neg(eml_log(z)))
-def eml_mul(a, b):    return eml_exp(eml_add(eml_log(a), eml_log(b)))
-def eml_div(a, b):    return eml_mul(a, eml_inv(b))
-def eml_pow(a, b):    return eml_exp(eml_mul(b, eml_log(a)))
+def eml_exp(z):       return EML(z, "1")                                   # Exp[z]
+def eml_log(z):       return EML("1", eml_exp(EML("1", z)))                # Log[z]
+def eml_zero():       return eml_log("1")                                  # 0 = Log[1]
+def eml_sub(a, b):    return EML(eml_log(a), eml_exp(b))                   # a - b
+def eml_neg(z):       return eml_sub(eml_zero(), z)                        # -z
+def eml_add(a, b):    return eml_sub(a, eml_neg(b))                        # a + b
+def eml_inv(z):       return eml_exp(eml_neg(eml_log(z)))                  # 1/z
+def eml_mul(a, b):    return eml_exp(eml_add(eml_log(a), eml_log(b)))      # a*b
+def eml_div(a, b):    return eml_mul(a, eml_inv(b))                        # a/b
+def eml_pow(a, b):    return eml_exp(eml_mul(b, eml_log(a)))               # a^b
 
 def eml_one(): return "1"
 def eml_two(): return eml_add("1", "1")
+def eml_double(z): return eml_add(z, z)
 
 def eml_int(n:int):
     if n == 1: return "1"
@@ -49,22 +46,47 @@ def eml_rational(p:int, q:int):
 
 # ---- canonical EML for special constants ----
 def eml_const_E():
-    return eml_exp("1")
+    return eml_exp("1")  # e = Exp[1]
 
 def eml_const_I():
+    #return eml_pow(eml_neg("1"), eml_rational(1, 2))  # I = (-1)^(1/2)
+    #return eml_exp(eml_mul(eml_log(eml_neg("1")),eml_rational(1,2)))  # I = Exp[Log[-1]*(1/2)]
+    #print(eml_neg("1"))
+    #print(eml_log(eml_neg("1")))
     minus_one = eml_neg("1")
     two = eml_int(2)
-    return eml_neg(eml_exp(eml_div(eml_log(minus_one), two)))
+    return eml_neg(eml_exp(eml_div(eml_log(minus_one), two)))  # I = -Exp[Log[-1]/2]
 
 def eml_const_Pi():
     i_eml = eml_const_I()
     log_minus1 = eml_log(eml_neg("1"))
-    return eml_mul(i_eml, log_minus1)
+    return eml_mul(i_eml, log_minus1)  # Pi = I*Log[-1]
 
 def eml_const_GoldenRatio():
+    # φ = (1 + sqrt(5))/2 = (1 + 5^(1/2)) / 2
     sqrt5 = eml_pow(eml_int(5), eml_rational(1, 2))
     num   = eml_add("1", sqrt5)
     return eml_div(num, eml_int(2))
+
+def eml_sinh(z):
+    e2z = eml_exp(eml_double(z))
+    ez = eml_exp(z)
+    return eml_div(eml_sub(e2z, "1"), eml_mul(eml_int(2), ez))
+
+def eml_cosh(z):
+    e2z = eml_exp(eml_double(z))
+    ez = eml_exp(z)
+    return eml_div(eml_add(e2z, "1"), eml_mul(eml_int(2), ez))
+
+def eml_tanh(z):
+    e2z = eml_exp(eml_double(z))
+    return eml_div(eml_sub(e2z, "1"), eml_add(e2z, "1"))
+
+def eml_atan(z):
+    i_eml = eml_const_I()
+    ratio = eml_neg(eml_div(eml_sub(z, i_eml), eml_add(z, i_eml)))
+    coef = eml_div(eml_neg(i_eml), eml_int(2))
+    return eml_mul(coef, eml_log(ratio))
 
 # =========================
 # Helpers for sympify locals
@@ -116,10 +138,13 @@ LOCALS = {
     "sinh": sinh, "cosh": cosh, "tanh": tanh,
     "Sinh": sinh, "Cosh": cosh, "Tanh": tanh,
 
-    "asin": ASIN_LOG, "acos": ACOS_LOG, "atan": ATAN_LOG,
-    "asinh": ASINH_LOG, "acosh": ACOSH_LOG, "atanh": ATANH_LOG,
-    "ArcSin": ASIN_LOG, "ArcCos": ACOS_LOG, "ArcTan": ATAN_LOG,
-    "ArcSinh": ASINH_LOG, "ArcCosh": ACOSH_LOG, "ArcTanh": ATANH_LOG,
+    # Keep inverse functions symbolic while parsing. This avoids premature
+    # branch choices for constants (notably ArcCos[1/2]) and prevents decimal
+    # inputs from collapsing into large approximate constants before lowering.
+    "asin": asin, "acos": acos, "atan": atan,
+    "asinh": asinh, "acosh": acosh, "atanh": atanh,
+    "ArcSin": asin, "ArcCos": acos, "ArcTan": atan,
+    "ArcSinh": asinh, "ArcCosh": acosh, "ArcTanh": atanh,
 
     "asec": ASEC, "acsc": ACSC, "acot": ACOT,
     "ArcSec": ASEC, "ArcCsc": ACSC, "ArcCot": ACOT,
@@ -138,8 +163,15 @@ LOCALS = {
 # =========================
 # Normalization & compiler
 # =========================
+def rewrite_real_atan(expr):
+    """Lower ArcTan with the quotient log identity before generic rewriting."""
+    return expr.replace(
+        lambda e: getattr(e, "func", None) is atan and len(e.args) == 1,
+        lambda e: ATAN_LOG(e.args[0]),
+    )
+
 def normalize_to_exp_log(expr, max_iter=8):
-    e = expr
+    e = rewrite_real_atan(expr)
     for _ in range(max_iter):
         e2 = e.rewrite(log).rewrite(exp).rewrite(Pow)
         if e2 == e: break
@@ -150,11 +182,12 @@ def eml_from_number(x):
     if isinstance(x, Integer):  return eml_int(int(x))
     if isinstance(x, Rational): return eml_rational(int(x.p), int(x.q))
     if isinstance(x, Float):
-        r = Rational(str(x))
+        r = Rational(str(x))  # exact via decimal string
         return eml_rational(int(r.p), int(r.q))
     raise TypeError(f"Unsupported numeric: {x!r}")
 
 def compile_to_eml(expr):
+    # atoms (numbers/symbols/constants)
     if expr.is_Atom:
         if isinstance(expr, (Integer, Rational, Float)):
             return eml_from_number(expr)
@@ -167,6 +200,15 @@ def compile_to_eml(expr):
         raise TypeError(f"Unexpected atom: {repr(expr)}")
 
     f = getattr(expr, 'func', None)
+
+    if f is sinh and len(expr.args) == 1:
+        return eml_sinh(compile_to_eml(expr.args[0]))
+    if f is cosh and len(expr.args) == 1:
+        return eml_cosh(compile_to_eml(expr.args[0]))
+    if f is tanh and len(expr.args) == 1:
+        return eml_tanh(compile_to_eml(expr.args[0]))
+    if f is atan and len(expr.args) == 1:
+        return eml_atan(compile_to_eml(expr.args[0]))
 
     if f is exp and len(expr.args) == 1:
         return eml_exp(compile_to_eml(expr.args[0]))
@@ -185,7 +227,7 @@ def compile_to_eml(expr):
         return acc
 
     if isinstance(expr, Add):
-        terms = list(expr.args)
+        terms = sorted(expr.args, key=lambda t: (bool(t.is_number), t.sort_key()))
         acc = compile_to_eml(terms[0])
         for t in terms[1:]:
             acc = eml_add(acc, compile_to_eml(t))
@@ -197,21 +239,26 @@ def compile_to_eml(expr):
     return compile_to_eml(e2)
 
 def wl_expr_to_sympy_source(s: str) -> str:
+    """Translate common Wolfram Mathematica syntax to a SymPy-parseable source string."""
     t = s.strip()
     if not t:
         raise ValueError("Empty input expression")
+    # Mathematica function calls use brackets and powers use ^.
+    # This is a pragmatic converter for symbolic math expressions handled by this compiler.
     t = t.replace("[", "(").replace("]", ")")
     t = t.replace("^", "**")
     return t
 
 def eml_compile_from_string(s: str):
-    expr = sympify(wl_expr_to_sympy_source(s), locals=LOCALS)
+    # Rationalize decimal literals during parsing so inputs like 0.5 lower to
+    # the same compact tree as 1/2 instead of producing enormous exact-decimal
+    # integer trees after premature numerical evaluation.
+    expr = sympify(wl_expr_to_sympy_source(s), locals=LOCALS, rational=True)
     if callable(expr) or not hasattr(expr, "rewrite"):
         raise TypeError(
             f"Input did not parse as a symbolic expression: {s!r}. "
             "If you mean a function of x, write Sqrt[x] rather than Sqrt."
         )
-    expr = normalize_to_exp_log(expr, max_iter=8)
     return compile_to_eml(expr)
 
 # =========================
@@ -231,6 +278,9 @@ OP_STRINGS = [
   "Power(x,y)", "Log(x,y)", "Avg(x,y)", "Hypot(x,y)"
 ]
 
+# =========================
+# Emitters (WL files)
+# =========================
 def _pure_list(items):
     body = ",\n  ".join(items)
     return "{\n  " + body + "\n}\n"
@@ -240,52 +290,98 @@ def _orig_to_wl_brackets(s: str) -> str:
 
 def emit_test_wl_files(outdir):
     os.makedirs(outdir, exist_ok=True)
+    # Remove legacy combined outputs; they are redundant and no longer emitted.
+    for legacy_name in ("test_suite_eml.wl", "test_suite_orig.wl"):
+        legacy_path = os.path.join(outdir, legacy_name)
+        if os.path.exists(legacy_path):
+            os.remove(legacy_path)
+
+    # compile to EML
     const_eml = [eml_compile_from_string(s) for s in CONST_STRINGS]
     func_eml  = [eml_compile_from_string(s) for s in FUNC_STRINGS]
     op_eml    = [eml_compile_from_string(s) for s in OP_STRINGS]
+
+    # originals, WL bracket syntax
     const_orig = [_orig_to_wl_brackets(s) for s in CONST_STRINGS]
     func_orig  = [_orig_to_wl_brackets(s) for s in FUNC_STRINGS]
     op_orig    = [_orig_to_wl_brackets(s) for s in OP_STRINGS]
+
+    # compiled lists
     with open(os.path.join(outdir, "const_eml.wl"), "w", encoding="utf-8") as f:
+        f.write("(* Auto-generated EML tests: constants *)\n")
         f.write(_pure_list(const_eml))
     with open(os.path.join(outdir, "funcs_eml.wl"), "w", encoding="utf-8") as f:
+        f.write("(* Auto-generated EML tests: unary functions of x *)\n")
         f.write(_pure_list(func_eml))
     with open(os.path.join(outdir, "ops_eml.wl"), "w", encoding="utf-8") as f:
+        f.write("(* Auto-generated EML tests: binary operations of x,y *)\n")
         f.write(_pure_list(op_eml))
+
+    # original lists
     with open(os.path.join(outdir, "const_orig.wl"), "w", encoding="utf-8") as f:
+        f.write("(* Original (uncompiled) expressions: constants *)\n")
         f.write(_pure_list(const_orig))
     with open(os.path.join(outdir, "funcs_orig.wl"), "w", encoding="utf-8") as f:
+        f.write("(* Original (uncompiled) expressions: unary functions of x *)\n")
         f.write(_pure_list(func_orig))
     with open(os.path.join(outdir, "ops_orig.wl"), "w", encoding="utf-8") as f:
+        f.write("(* Original (uncompiled) expressions: binary operations of x,y *)\n")
         f.write(_pure_list(op_orig))
-    return {}
+
+    return {
+        "const_eml.wl": const_eml,
+        "funcs_eml.wl": func_eml,
+        "ops_eml.wl": op_eml,
+        "const_orig.wl": const_orig,
+        "funcs_orig.wl": func_orig,
+        "ops_orig.wl": op_orig,
+    }
 
 
 def _build_arg_parser():
     ap = argparse.ArgumentParser(
-        description="Standalone EML compiler."
+        description="Standalone EML compiler. Default mode compiles one Wolfram Mathematica-style expression and prints EML."
     )
-    ap.add_argument("expr", nargs="?")
-    ap.add_argument("--emit-test", action="store_true")
+    ap.add_argument(
+        "expr",
+        nargs="?",
+        help="Wolfram Mathematica-style expression, e.g. 'Sin[x]' or 'Plus[x, y]'",
+    )
+    ap.add_argument(
+        "--emit-test",
+        action="store_true",
+        help="write *.wl test lists to ./eml_tests_out",
+    )
     return ap
 
 
 def parse_cli_args(argv=None):
     ap = _build_arg_parser()
     args, extra = ap.parse_known_args(argv)
+    if extra:
+        if args.expr is None and not args.emit_test and len(extra) == 1 and extra[0].startswith("-") and extra[0] != "--":
+            return ap.parse_args(["--", extra[0]])
+        ap.error(f"unrecognized arguments: {' '.join(extra)}")
     return args
 
+# =========================
+# CLI
+# =========================
 if __name__ == "__main__":
     ap = _build_arg_parser()
     args = parse_cli_args()
+
     if args.emit_test:
         outdir = "eml_tests_out"
         emit_test_wl_files(outdir)
         print(f"Wrote EML + original lists to: {os.path.abspath(outdir)}")
         sys.exit(0)
+
     expr = args.expr
     if expr is None and not sys.stdin.isatty():
         expr = sys.stdin.read().strip()
+
     if not expr:
-        ap.error("missing expression")
+        ap.error("missing expression (provide EXPR or use --emit-test)")
+
     print(eml_compile_from_string(expr))

@@ -155,3 +155,10 @@ def test_log_base_two_argument():
 def test_constants_i_and_goldenratio_compile():
     assert compile_expression("I + x")["variables_detected"] == ["x"]
     assert compile_expression("GoldenRatio + x")["variables_detected"] == ["x"]
+
+
+def test_decimal_lowers_like_rational():
+    # Upstream v4 parses with rational=True, so 0.5 compiles to the same
+    # compact tree as 1/2 instead of an enormous exact-decimal tree.
+    assert compile_expression("0.5")["eml_string"] == \
+        compile_expression("1/2")["eml_string"]
