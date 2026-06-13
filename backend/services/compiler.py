@@ -50,6 +50,24 @@ ALLOWED: dict = {
     "log":     sp.log,
     "ln":      sp.log,
     "abs":     sp.Abs,
+    # Reciprocal trigonometric
+    "sec":     EML_LOCALS["Sec"],
+    "csc":     EML_LOCALS["Csc"],
+    "cot":     EML_LOCALS["Cot"],
+    "asec":    EML_LOCALS["ArcSec"],
+    "acsc":    EML_LOCALS["ArcCsc"],
+    "acot":    EML_LOCALS["ArcCot"],
+    "arcsec":  EML_LOCALS["ArcSec"],
+    "arccsc":  EML_LOCALS["ArcCsc"],
+    "arccot":  EML_LOCALS["ArcCot"],
+    # Reciprocal hyperbolic
+    "sech":    sp.sech,
+    "csch":    sp.csch,
+    "coth":    sp.coth,
+    # Area-hyperbolic spelling (ar… ) — aliases of the inverse hyperbolics
+    "arsinh":  EML_LOCALS["ArcSinh"],
+    "arcosh":  EML_LOCALS["ArcCosh"],
+    "artanh":  EML_LOCALS["ArcTanh"],
     # Custom from paper
     "half":    EML_LOCALS["Half"],
     "inv":     EML_LOCALS["Inv"],
@@ -110,6 +128,34 @@ def normalize_input(user_input: str) -> str:
     return _FUNC_CALL_RE.sub(_fold, text)
 
 
+def reject_unknown_functions(text: str) -> None:
+    """
+    Raise a clear error for an unrecognised function name *before* SymPy's
+    implicit-multiplication transform silently shatters it into a product of
+    single letters (e.g. ``arsinh(...)`` -> ``a*r*s*i*n*h*(...)``), which
+    otherwise surfaces as a confusing "too many variables" error.
+
+    A name is accepted if it is one of our functions, a reserved constant
+    (``pi(x)`` is read as multiplication), or any SymPy function the compiler
+    might still handle. Single letters are left alone — ``x(x+1)`` is valid
+    implicit multiplication, not a function call.
+    """
+    for match in _FUNC_CALL_RE.finditer(text):
+        name = match.group(1)
+        lowered = name.lower()
+        if len(name) < 2:
+            continue
+        if lowered in _FUNCTION_NAMES or lowered in _CONSTANT_NAMES:
+            continue
+        candidate = getattr(sp, name, None) or getattr(sp, lowered, None)
+        if isinstance(candidate, sp.FunctionClass):
+            continue
+        raise UnsupportedOperationError(
+            f"Unknown function '{name}'. If you meant multiplication, add an "
+            f"operator — e.g. write 3x*sec(x), not 3xsec(x)."
+        )
+
+
 class InvalidExpressionError(Exception):
     pass
 
@@ -137,6 +183,10 @@ def compile_expression(user_input: str) -> dict:
     normalized_input = normalize_input(user_input)
     if not normalized_input:
         raise InvalidExpressionError("Expression is empty")
+
+    # Catch unknown/typo'd function names with a clear message before SymPy's
+    # implicit multiplication mangles them into spurious variables.
+    reject_unknown_functions(normalized_input)
 
     try:
         sympy_expr = parse_expr(

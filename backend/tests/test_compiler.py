@@ -76,3 +76,41 @@ def test_equation_matches_difference_form():
     eq = compile_expression("sin(x) = cos(x)")
     diff = compile_expression("sin(x) - cos(x)")
     assert eq["eml_string"] == diff["eml_string"]
+
+
+def test_area_hyperbolic_aliases():
+    # ar… spelling should behave like the inverse hyperbolic functions.
+    assert compile_expression("arsinh(x)")["eml_string"] == \
+        compile_expression("asinh(x)")["eml_string"]
+    assert "x" in compile_expression("artanh(x)")["variables_detected"]
+
+
+def test_reciprocal_functions_case_insensitive():
+    for expr in ("Sec(x)", "Csc(x)", "Cot(x)", "Coth(x)", "Sech(x)"):
+        assert "x" in compile_expression(expr)["variables_detected"]
+
+
+def test_unknown_function_gives_clear_error():
+    # An unrecognised name must not surface as "too many variables".
+    with pytest.raises(UnsupportedOperationError) as exc:
+        compile_expression("foobar(x)")
+    assert "Unknown function" in str(exc.value)
+
+
+def test_glued_function_name_is_caught():
+    # 3xsec(x) tokenizes as the unknown identifier 'xsec'.
+    with pytest.raises(UnsupportedOperationError) as exc:
+        compile_expression("3xsec(x)")
+    assert "Unknown function" in str(exc.value)
+
+
+def test_implicit_multiplication_with_paren_still_works():
+    # Single-letter and constant before '(' is multiplication, not a call.
+    assert "x" in compile_expression("x(x + 1)")["variables_detected"]
+    assert "x" in compile_expression("pi(x + 1)")["variables_detected"]
+
+
+def test_unsupported_but_known_function_still_explained():
+    # gamma is a real SymPy function but not elementary — clear compile error.
+    with pytest.raises(UnsupportedOperationError):
+        compile_expression("gamma(x)")
