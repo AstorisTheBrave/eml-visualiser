@@ -157,10 +157,34 @@ backend to your frontend origin and point `frontend/.env.production`'s
 
 ---
 
+## Supported input
+
+The compiler accepts any expression that the v4 pipeline can rewrite into
+`exp`/`log`/powers. Function names are **case-insensitive** and a single `=`
+is read as `lhs - rhs` (root form).
+
+- **Arithmetic / powers:** `+ - * /`, `^` or `**`, implicit multiplication (`2x`).
+- **Roots & misc:** `sqrt`, `cbrt`, `abs` (real magnitude, i.e. `sqrt(x^2)`),
+  `exp`, `log` (natural; `log(z, b)` for base *b*), `ln`.
+- **Trig:** `sin cos tan cot sec csc` and inverses `asin acos atan acot asec acsc`
+  (also `arcsin`, `arccos`, … spellings).
+- **Hyperbolic:** `sinh cosh tanh coth sech csch` and inverses
+  `asinh acosh atanh acoth asech acsch` (also `arsinh`/`arcsch`/… spellings).
+- **Constants:** `pi`, `e`, `I` (imaginary unit), `GoldenRatio`.
+- **From the paper's table:** `half minus inv sqr avg hypot sigma`
+  (`sigmoid`/`logisticsigmoid`) plus Wolfram-style `Plus Times Subtract Divide Power`.
+
 ## Known Limitations
 
+- A variable touching a function name needs an operator: write `3x*sec(x)`, not
+  `3xsec(x)` — the latter tokenizes as the single unknown name `xsec` (you get a
+  clear `Unknown function 'xsec'` error). This is inherent to implicit
+  multiplication and is left as-is to stay faithful to the v4 parser.
+- Non-elementary functions that don't reduce to `exp`/`log` are unsupported by
+  design (e.g. `gamma`, `erf`, `sign`, `sinc`, `LambertW`); they return a clear
+  "could not be compiled to EML" error.
 - `asyncio.wait_for` cancels the client-facing coroutine on timeout but the underlying SymPy thread continues until it finishes. True termination requires `multiprocessing`. Deferred to v2.
-- Domain detection for composed functions (e.g. `sqrt(arcsin(x))`) returns the most restrictive single-function domain rather than the true intersection. Marked `approximate: true`.
+- Domain detection for composed functions (e.g. `sqrt(arcsin(x))`) returns the most restrictive single-function domain rather than the true intersection. Marked `approximate: true`. Scaled arguments like `arcsin(x/2)` use the bare `arcsin` range.
 - `e` and `pi` are treated as mathematical constants, not variable names.
 
 ---

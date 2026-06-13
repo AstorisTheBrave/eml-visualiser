@@ -121,3 +121,37 @@ def test_unsupported_but_known_function_still_explained():
     # gamma is a real SymPy function but not elementary — clear compile error.
     with pytest.raises(UnsupportedOperationError):
         compile_expression("gamma(x)")
+
+
+def test_abs_compiles_and_is_magnitude():
+    from services.evaluator import evaluate_expression
+    c = compile_expression("abs(x)")
+    assert "x" in c["variables_detected"]
+    assert evaluate_expression(c["sympy_expr"], {"x": -3}) == 3.0
+
+
+def test_cbrt_compiles():
+    c = compile_expression("cbrt(27)")
+    assert c["is_constant"] is True
+
+
+def test_wolfram_style_aliases():
+    # Names from the paper's LOCALS that were never surfaced before.
+    assert "x" in compile_expression("minus(x)")["variables_detected"]
+    assert compile_expression("power(x, y)")["eml_string"] == \
+        compile_expression("x^y")["eml_string"]
+    assert compile_expression("divide(x, y)")["eml_string"] == \
+        compile_expression("x/y")["eml_string"]
+    assert compile_expression("logisticsigmoid(x)")["eml_string"] == \
+        compile_expression("sigma(x)")["eml_string"]
+
+
+def test_log_base_two_argument():
+    # log(z, b) is base-b log; supported by SymPy + the v4 pipeline.
+    c = compile_expression("log(x, 10)")
+    assert "x" in c["variables_detected"]
+
+
+def test_constants_i_and_goldenratio_compile():
+    assert compile_expression("I + x")["variables_detected"] == ["x"]
+    assert compile_expression("GoldenRatio + x")["variables_detected"] == ["x"]

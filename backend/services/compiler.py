@@ -17,6 +17,17 @@ TRANSFORMATIONS = (
     + (implicit_multiplication_application, convert_xor)
 )
 
+
+def _abs_real(z):
+    # v4's pipeline can't reduce SymPy's Abs to exp/log, but |x| = sqrt(x**2)
+    # for real x uses only v4-supported primitives (sqrt + power), so abs
+    # compiles instead of being silently advertised-but-broken.
+    return sp.sqrt(z ** 2)
+
+
+def _cbrt(z):
+    return z ** sp.Rational(1, 3)
+
 # ALLOWED is built explicitly — never via spread.
 # Only user-facing function names included.
 # "E", "I", "i" deliberately excluded to prevent silent
@@ -46,10 +57,11 @@ ALLOWED: dict = {
     "arctanh": EML_LOCALS["ArcTanh"],
     # Algebraic
     "sqrt":    sp.sqrt,
+    "cbrt":    _cbrt,
     "exp":     sp.exp,
-    "log":     sp.log,
+    "log":     sp.log,      # log(z) natural; log(z, b) for base-b
     "ln":      sp.log,
-    "abs":     sp.Abs,
+    "abs":     _abs_real,
     # Reciprocal trigonometric
     "sec":     EML_LOCALS["Sec"],
     "csc":     EML_LOCALS["Csc"],
@@ -76,12 +88,21 @@ ALLOWED: dict = {
     "arsech":  sp.asech,
     "arcoth":  sp.acoth,
     # Custom from paper
-    "half":    EML_LOCALS["Half"],
-    "inv":     EML_LOCALS["Inv"],
-    "sqr":     EML_LOCALS["Sqr"],
-    "sigma":   EML_LOCALS["LogisticSigmoid"],
-    "avg":     EML_LOCALS["Avg"],
-    "hypot":   EML_LOCALS["Hypot"],
+    "half":            EML_LOCALS["Half"],
+    "minus":           EML_LOCALS["Minus"],
+    "inv":             EML_LOCALS["Inv"],
+    "sqr":             EML_LOCALS["Sqr"],
+    "sigma":           EML_LOCALS["LogisticSigmoid"],
+    "sigmoid":         EML_LOCALS["LogisticSigmoid"],
+    "logisticsigmoid": EML_LOCALS["LogisticSigmoid"],
+    "avg":             EML_LOCALS["Avg"],
+    "hypot":           EML_LOCALS["Hypot"],
+    # Wolfram-style binary operators from the paper's LOCALS
+    "plus":            EML_LOCALS["Plus"],
+    "times":           EML_LOCALS["Times"],
+    "subtract":        EML_LOCALS["Subtract"],
+    "divide":          EML_LOCALS["Divide"],
+    "power":           EML_LOCALS["Power"],
     # Constants
     "pi":      sp.pi,
     "Pi":      sp.pi,
