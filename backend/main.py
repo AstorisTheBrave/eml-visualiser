@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Ensure the backend package dir is importable regardless of the working
+# directory Vercel runs the service from (the local-module imports below
+# — core, routes, services, eml_compiler_v4 — live alongside this file).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
