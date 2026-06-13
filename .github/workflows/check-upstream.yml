@@ -1,0 +1,99 @@
+name: Check upstream EML compiler
+
+# Watches the upstream source of the vendored backend/eml_compiler_v4.py and
+# opens (or comments on) a GitHub issue if it drifts from our copy.
+#
+# This is a maintenance-only workflow: it just reads the repo and writes an
+# issue. It never commits, pushes a branch, or opens a PR, so it does NOT
+# trigger any Vercel deployment (production or preview).
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays, 06:00 UTC
+  workflow_dispatch: {}     # allow manual runs from the Actions tab
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare vendored compiler with upstream
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Upstream source of backend/eml_compiler_v4.py.
+            // If the upstream repo layout changes, update these candidates.
+            const repo = 'VA00/SymbolicRegressionPackage';
+            const branches = ['main', 'master'];
+            const paths = [
+              'eml_compiler_v4.py',
+              'src/eml_compiler_v4.py',
+              'python/eml_compiler_v4.py',
+            ];
+
+            const local = fs.readFileSync('backend/eml_compiler_v4.py', 'utf8');
+            const norm = (s) => s.replace(/\r\n/g, '\n').trimEnd();
+            const title = 'Upstream EML compiler check';
+
+            // Locate the upstream file by trying the candidate URLs.
+            let upstream = null, usedUrl = null;
+            for (const b of branches) {
+              for (const p of paths) {
+                const url = `https://raw.githubusercontent.com/${repo}/${b}/${p}`;
+                const res = await fetch(url);
+                if (res.ok) { upstream = await res.text(); usedUrl = url; break; }
+              }
+              if (upstream) break;
+            }
+
+            let body;
+            if (!upstream) {
+              body =
+                `⚠️ Could not locate the upstream compiler in \`${repo}\` at any ` +
+                `known path/branch.\n\nThe upstream layout may have changed — update ` +
+                `the URL candidates in \`.github/workflows/check-upstream.yml\`.`;
+            } else if (norm(upstream) === norm(local)) {
+              core.info(`Vendored compiler is up to date with ${usedUrl}`);
+              return; // no drift, nothing to report
+            } else {
+              body =
+                `The vendored \`backend/eml_compiler_v4.py\` differs from upstream.\n\n` +
+                `**Source:** ${usedUrl}\n\n` +
+                `Review the upstream changes and, if desired, refresh the vendored ` +
+                `copy. (The file is otherwise treated as do-not-edit.)\n\n` +
+                `_Detected by the scheduled upstream check; this issue does not affect ` +
+                `the Vercel deployment._`;
+            }
+
+            // Avoid duplicate issues: comment on the existing open one if present.
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = open.find((i) => i.title === title && !i.pull_request);
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['upstream-sync'],
+              });
+            }
